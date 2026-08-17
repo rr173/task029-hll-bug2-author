@@ -10,6 +10,7 @@ import (
 	"hash/fnv"
 	"math"
 	"math/bits"
+	"sync"
 )
 
 // Precision bounds. A minimum of 4 keeps at least 16 registers so the bias
@@ -31,6 +32,7 @@ var (
 
 // HLL is a HyperLogLog sketch over a 64-bit hash space.
 type HLL struct {
+	mu        sync.RWMutex
 	p         uint8  // precision: number of bits used for register indexing
 	m         uint32 // number of registers = 2^p
 	registers []uint8
@@ -74,6 +76,8 @@ func (h *HLL) Zeros() int {
 // Add folds an element into the sketch. Adding the same element more than once
 // has no effect on the estimate.
 func (h *HLL) Add(data []byte) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	x := hash64(data)
 	idx := x & uint64(h.m-1) // low p bits select the register
 	w := x >> h.p              // remaining (64-p) bits form the rank window
@@ -92,6 +96,8 @@ func (h *HLL) Add(data []byte) {
 // applying the standard small-range (linear counting) and large-range bias
 // corrections for a 64-bit hash space.
 func (h *HLL) Estimate() float64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	m := float64(h.m)
 	var sum float64
 	zeros := 0
